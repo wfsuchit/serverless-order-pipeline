@@ -1,0 +1,183 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: 'AWS::Serverless-2016-10-31'
+Description: >
+  serverless-order-pipeline
+
+  Sample SAM Template for serverless-order-pipeline
+
+Parameters:
+  # Currently not in use
+  ModuleName:
+    Type: String
+    Default: serverless-order-pipeline
+    Description: Module name with respect to which all the resources will be made
+
+Resources:
+  EntryLambda:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: lambdas/entry_lambda
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      FunctionName: !Join ["-", [!Ref "ModuleName", "entry-lambda"]]
+      Description: "Entry lambda"
+      Events:
+        HttpPost:
+          Type: 'Api'
+          Properties:
+            Path: /createOrder
+            Method: post
+      Role: !GetAtt EntryLambdaRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopic
+      # VpcConfig:
+      #   SecurityGroupIds:
+      #     - #TODO
+      #   SubnetIds:
+      #     - #TODO
+
+  EntryLambdaRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: LambdaCloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+              - Effect: Allow
+                Action:
+                  - SNS:Publish
+                Resource: !Ref SnsTopic
+
+  # MyMemoryDBCluster:
+  #   Type: AWS::MemoryDB::Cluster
+  #   Properties:
+  #     ClusterName: !Join ["-", [!Ref "ModuleName", "memdb"]]
+  #     NodeType: db.t4g.small
+  #     NumShards: 1
+  #     SubnetGroupName: #TODO
+  #     SecurityGroupIds:
+  #       - #TODO
+
+  SnsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      DisplayName: !Join ["-", [!Ref "ModuleName", "sns"]]
+      # TopicName: !Join ["-", [!Ref "ModuleName", "sns"]]
+      # FifoTopic: false
+      Subscription:
+        - Endpoint: !GetAtt QueueOne.Arn
+          Protocol: "sqs"
+      #   - Endpoint: !GetAtt QueueTwo.Arn
+      #     Protocol: "sqs"
+      Tags:
+        - Key: Env
+          Value: POC
+        - Key: module
+          Value: !Ref "ModuleName"
+
+  QueueOne:
+    Type: AWS::SQS::Queue
+    Properties:
+      DelaySeconds: 0
+      VisibilityTimeout: 120
+      Tags:
+        - Key: Env
+          Value: POC
+        - Key: module
+          Value: !Ref "ModuleName"
+
+  LambdaSqsRole:
+    Type: "AWS::IAM::Role"
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: SQSLambda
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sqs:ReceiveMessage
+                  - sqs:DeleteMessage
+                  - sqs:GetQueueAttributes
+                  - sqs:ChangeMessageVisibility
+                Resource: 
+                  - !GetAtt QueueOne.Arn
+                  # - !GetAtt HealthtechQueueTwo.Arn
+        - PolicyName: LambdaCloudWatchLogs
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action:
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+                Resource: "arn:aws:logs:*:*:*"
+
+  LambdaOne:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: lambdas/lambdaone
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      FunctionName: !Join ["-", [!Ref "ModuleName", "process-order"]]
+      Description: "serverless-order-pipeline SQS One triggered lambda to process order"
+      Events:
+        SqsEvent:
+          Type: 'SQS'
+          Properties:
+            Queue: !GetAtt QueueOne.Arn
+            BatchSize: 1
+      Role: !GetAtt LambdaSqsRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopic
+
+  SnsToSqsPolicy:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: "*"
+            Action: SQS:SendMessage
+            Resource: arn:aws:sqs:ap-south-1:*
+            Condition:
+              ArnEquals:
+                aws:SourceArn: !Ref SnsTopic
+      Queues:
+        - !Ref QueueOne
+        # - !Ref HealthtechQueueTwo
+
+Outputs:
+  WebEndpoint:
+    Description: API Gateway endpoint URL for Prod stage
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
