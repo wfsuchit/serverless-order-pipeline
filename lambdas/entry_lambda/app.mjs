@@ -1,6 +1,6 @@
 import AWS from 'aws-sdk';
 const sns = new AWS.SNS();
-
+const memoryDb = new AWS.MemoryDB();
 /**
  * Event doc: https://docs.aws.amazon.com/apigateway/latest/developerguide/set-up-lambda-proxy-integrations.html#api-gateway-simple-proxy-for-lambda-input-format
  * @param {Object} event - API Gateway Lambda Proxy Input Format
@@ -56,4 +56,15 @@ function pushToSns() {
             }
         });
     })
+}
+async function pushToMemoryDB(orderDetails) {
+    const params = {
+        ClusterName: process.env.MEMORYDB_ARN,
+        Command: 'SET',
+        Key: orderDetails['orderId'] + '-' + 'timestamp',
+        Value: orderDetails
+      };
+
+      const result = await memoryDb.sendCommand(params).promise();
+      return result;
 }

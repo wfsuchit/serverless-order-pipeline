@@ -11,6 +11,9 @@ Parameters:
     Type: String
     Default: serverless-order-pipeline
     Description: Module name with respect to which all the resources will be made
+  Environment:
+    Type: String
+    Default: dev
 
 Resources:
   EntryLambda:
@@ -31,11 +34,13 @@ Resources:
       Environment:
         Variables:
           SNS_TOPIC_ARN: !Ref SnsTopic
-      # VpcConfig:
-      #   SecurityGroupIds:
-      #     - #TODO
-      #   SubnetIds:
-      #     - #TODO
+          # MEMORYDB_ARN: !Ref MemoryDBCluster
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0786bd95583dca17e
+        SubnetIds:
+          - subnet-0bb2f9ecd49dc8206
+          - subnet-000f285aab8352835
 
   EntryLambdaRole:
     Type: "AWS::IAM::Role"
@@ -64,16 +69,32 @@ Resources:
                 Action:
                   - SNS:Publish
                 Resource: !Ref SnsTopic
+              - Effect: Allow
+                Action:
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DeleteNetworkInterface"
+                  - "ec2:DescribeInstances"
+                  - "ec2:AttachNetworkInterface"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - memorydb:GetItem
+                  - memorydb:PutItem
+                  - memorydb:DeleteItem
+                # Resource: !Ref MemoryDBCluster
+                Resource: arn:aws:memorydb:ap-south-1:613231527352:cluster/serverless-order-pipeline-dev-memdb
 
-  # MyMemoryDBCluster:
+  # MemoryDBCluster:
   #   Type: AWS::MemoryDB::Cluster
   #   Properties:
-  #     ClusterName: !Join ["-", [!Ref "ModuleName", "memdb"]]
+  #     ClusterName: !Join ["-", [!Ref "ModuleName", !Ref "Environment", "memdb"]]
+  #     ACLName: open-access
   #     NodeType: db.t4g.small
   #     NumShards: 1
-  #     SubnetGroupName: #TODO
+  #     SubnetGroupName: wlns-stage-memorydb-subnet-01
   #     SecurityGroupIds:
-  #       - #TODO
+  #       -  sg-0786bd95583dca17e
 
   SnsTopic:
     Type: AWS::SNS::Topic

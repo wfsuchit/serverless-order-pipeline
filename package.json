@@ -1,11 +1,9 @@
 {
-    "name": "delete-test-01",
-    "description": "delete-test-01-description",
+    "name": "serverless-order-pipeline",
+    "description": "serverless-order-pipeline",
     "version": "0.0.1",
     "private": true,
     "dependencies": {
-        "@aws-sdk/client-dynamodb": "^3.188.0",
-        "@aws-sdk/lib-dynamodb": "^3.188.0",
         "aws-sdk": "^2.1328.0"
     },
     "devDependencies": {
