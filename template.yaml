@@ -16,19 +16,80 @@ Parameters:
     Default: dev
 
 Resources:
-  EntryLambda:
+
+  RootApiGateway:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: Prod
+
+  CreateOrderLambda:
     Type: 'AWS::Serverless::Function'
     Properties:
-      CodeUri: lambdas/entry_lambda
+      CodeUri: lambdas/create_order
       Handler: app.lambdaHandler
       Runtime: nodejs18.x
-      FunctionName: !Join ["-", [!Ref "ModuleName", "entry-lambda"]]
-      Description: "Entry lambda"
+      FunctionName: !Join ["-", [!Ref "ModuleName", "create-order"]]
+      Description: "Lambda to create a new order"
       Events:
         HttpPost:
           Type: 'Api'
           Properties:
+            RestApiId: !Ref RootApiGateway
             Path: /createOrder
+            Method: post
+      Role: !GetAtt EntryLambdaRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopic
+          # MEMORYDB_ARN: !Ref MemoryDBCluster
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0786bd95583dca17e
+        SubnetIds:
+          - subnet-0bb2f9ecd49dc8206
+          - subnet-000f285aab8352835
+
+  UpdateOrderLambda:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: lambdas/update_order
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      FunctionName: !Join ["-", [!Ref "ModuleName", "update-order"]]
+      Description: "Lambda to update a existing order"
+      Events:
+        HttpPost:
+          Type: 'Api'
+          Properties:
+            RestApiId: !Ref RootApiGateway
+            Path: /updateOrder
+            Method: post
+      Role: !GetAtt EntryLambdaRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopic
+          # MEMORYDB_ARN: !Ref MemoryDBCluster
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0786bd95583dca17e
+        SubnetIds:
+          - subnet-0bb2f9ecd49dc8206
+          - subnet-000f285aab8352835
+
+  FetchOrderLambda:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: lambdas/fetch_order
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      FunctionName: !Join ["-", [!Ref "ModuleName", "fetch-order"]]
+      Description: "Lambda to fetch a existing order"
+      Events:
+        HttpPost:
+          Type: 'Api'
+          Properties:
+            RestApiId: !Ref RootApiGateway
+            Path: /fetchOrder
             Method: post
       Role: !GetAtt EntryLambdaRole.Arn
       Environment:
@@ -65,6 +126,10 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: "arn:aws:logs:*:*:*"
+        - PolicyName: MemorydbLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
               - Effect: Allow
                 Action:
                   - SNS:Publish
@@ -82,7 +147,6 @@ Resources:
                   - memorydb:GetItem
                   - memorydb:PutItem
                   - memorydb:DeleteItem
-                # Resource: !Ref MemoryDBCluster
                 Resource: arn:aws:memorydb:ap-south-1:613231527352:cluster/serverless-order-pipeline-dev-memdb
 
   # MemoryDBCluster:
@@ -103,7 +167,7 @@ Resources:
       # TopicName: !Join ["-", [!Ref "ModuleName", "sns"]]
       # FifoTopic: false
       Subscription:
-        - Endpoint: !GetAtt QueueOne.Arn
+        - Endpoint: !GetAtt EnrichmentQueue.Arn
           Protocol: "sqs"
       #   - Endpoint: !GetAtt QueueTwo.Arn
       #     Protocol: "sqs"
@@ -113,7 +177,7 @@ Resources:
         - Key: module
           Value: !Ref "ModuleName"
 
-  QueueOne:
+  EnrichmentQueue:
     Type: AWS::SQS::Queue
     Properties:
       DelaySeconds: 0
@@ -148,7 +212,7 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
                 Resource: 
-                  - !GetAtt QueueOne.Arn
+                  - !GetAtt EnrichmentQueue.Arn
                   # - !GetAtt HealthtechQueueTwo.Arn
         - PolicyName: LambdaCloudWatchLogs
           PolicyDocument:
@@ -160,25 +224,53 @@ Resources:
                   - "logs:CreateLogStream"
                   - "logs:PutLogEvents"
                 Resource: "arn:aws:logs:*:*:*"
+        - PolicyName: MemorydbLambdaPolicy
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  - SNS:Publish
+                Resource: !Ref SnsTopic
+              - Effect: Allow
+                Action:
+                  - "ec2:DescribeNetworkInterfaces"
+                  - "ec2:CreateNetworkInterface"
+                  - "ec2:DeleteNetworkInterface"
+                  - "ec2:DescribeInstances"
+                  - "ec2:AttachNetworkInterface"
+                Resource: "*"
+              - Effect: Allow
+                Action:
+                  - memorydb:GetItem
+                  - memorydb:PutItem
+                  - memorydb:DeleteItem
+                Resource: arn:aws:memorydb:ap-south-1:613231527352:cluster/serverless-order-pipeline-dev-memdb
 
-  LambdaOne:
+  EnrichmentLambda:
     Type: 'AWS::Serverless::Function'
     Properties:
-      CodeUri: lambdas/lambdaone
+      CodeUri: lambdas/enrich_order
       Handler: app.lambdaHandler
       Runtime: nodejs18.x
-      FunctionName: !Join ["-", [!Ref "ModuleName", "process-order"]]
-      Description: "serverless-order-pipeline SQS One triggered lambda to process order"
+      FunctionName: !Join ["-", [!Ref "ModuleName", "enrich-order"]]
+      Description: "serverless-order-pipeline SQS One triggered lambda to enrich order"
       Events:
         SqsEvent:
           Type: 'SQS'
           Properties:
-            Queue: !GetAtt QueueOne.Arn
+            Queue: !GetAtt EnrichmentQueue.Arn
             BatchSize: 1
       Role: !GetAtt LambdaSqsRole.Arn
       Environment:
         Variables:
           SNS_TOPIC_ARN: !Ref SnsTopic
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0786bd95583dca17e
+        SubnetIds:
+          - subnet-0bb2f9ecd49dc8206
+          - subnet-000f285aab8352835
 
   SnsToSqsPolicy:
     Type: AWS::SQS::QueuePolicy
@@ -195,10 +287,12 @@ Resources:
               ArnEquals:
                 aws:SourceArn: !Ref SnsTopic
       Queues:
-        - !Ref QueueOne
+        - !Ref EnrichmentQueue
         # - !Ref HealthtechQueueTwo
 
 Outputs:
   WebEndpoint:
     Description: API Gateway endpoint URL for Prod stage
-    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Value: !Sub "https://${RootApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Export:
+      Name: MyApiEndpoint
