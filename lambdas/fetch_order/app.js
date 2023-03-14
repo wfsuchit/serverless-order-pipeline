@@ -25,28 +25,13 @@ if (typeof redisClient === 'undefined') {
 
 exports.lambdaHandler = async (event, context) => {
     try {
-        let requestType = undefined;
-        let requestId = undefined;
-        if(event.queryStringParameters.order_id) {
-            requestId = event.queryStringParameters.order_id;
-            requestType = 'order'
-        } else {
-            requestId = event.queryStringParameters.customer_id;
-            requestType = 'user'
-        }
-        let responseValue = undefined;
-        if(requestType === 'order') {
-            responseValue = await getOrderDetails(requestId);
-        } else {
-            const orderList = await redisClient.zrange(requestId, 0, -1);
-            console.log('orderlist is', orderList);
-            responseValue = []
-            for await (const orderId of orderList) {
-                const orderLog = await getOrderDetails(orderId)
-                responseValue.push(orderLog);
-            }
-        }
         console.log('event received is', event);
+        let responseValue = undefined;
+        if(event.queryStringParameters.order_id) {
+            responseValue = await getOrderDetails(event.queryStringParameters.order_id);
+        } else {
+            responseValue = await getCustomerOrders(event.queryStringParameters);
+        }
         return {
             'statusCode': 200,
             'body': JSON.stringify(responseValue)
@@ -62,7 +47,37 @@ exports.lambdaHandler = async (event, context) => {
     }
 };
 
+/**
+ * Get order details from order id
+ * @param {string} orderId 
+ * @returns details of the order
+ */
 async function getOrderDetails(orderId) {
     const orderDetails = await redisClient.call("JSON.GET", orderId, '.');
     return JSON.parse(orderDetails);
+}
+
+/**
+ * Get orders of a customer using customer id and other filters
+ * @param {Object} queryStringParameters 
+ * @returns list of orders by the customer
+ */
+async function getCustomerOrders(queryStringParameters) {    
+    const customerId = queryStringParameters.customer_id;
+    const offset = queryStringParameters.offset ? queryStringParameters.offset : 0;
+    const limit = queryStringParameters.limit && queryStringParameters.limit < 100 ? queryStringParameters.limit : 10;
+    const startDateEpoch = queryStringParameters.start_date ? queryStringParameters.start_date : 0;
+    const endDateEpoch = queryStringParameters.end_date ? queryStringParameters.end_date : Math.ceil(new Date().getTime() / 1000);
+    
+    console.log('filter params are', {
+        customerId, startDateEpoch, endDateEpoch, offset, limit
+    })
+    
+    const orderList = await redisClient.zrevrangebyscore(customerId, endDateEpoch, startDateEpoch, 'LIMIT', offset, limit);
+    const customerOrders = [];
+    for await (const orderId of orderList) {
+        const orderLog = await getOrderDetails(orderId);
+        customerOrders.push(orderLog);
+    }
+    return customerOrders;
 }

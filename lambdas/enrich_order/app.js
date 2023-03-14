@@ -1,5 +1,6 @@
 const Redis = require('ioredis');
 
+// Setting redis connection if a connection does not exist
 if (typeof redisClient === 'undefined') {
     console.log('Establishing redis connection', redisClient);
       var redisClient = new Redis({
@@ -44,6 +45,11 @@ exports.lambdaHandler = async (event, context) => {
     }
 };
 
+/**
+ * Enriches the order received from SQS
+ * @param {Object} orderDetails 
+ * @returns 
+ */
 async function enrichOrder(orderDetails) {
     return new Promise(async (resolve, reject) => {
         try {
