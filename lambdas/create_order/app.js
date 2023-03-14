@@ -1,10 +1,8 @@
 const AWS = require('aws-sdk');
 const sns = new AWS.SNS();
-const redis = require('redis');
-
 const Redis = require('ioredis');
-const memoryDb = new AWS.MemoryDB();
 
+// Creates a new redis connection only if connection does not exist
 if (typeof redisClient === 'undefined') {
     console.log('Establishing redis connection', redisClient);
       var redisClient = new Redis({
@@ -30,20 +28,20 @@ if (typeof redisClient === 'undefined') {
 
 exports.lambdaHandler = async (event, context) => {
     try {
-        // Generate order id and put an entry into memoryDB
-
-        // Generate a sns message
-        // await pushToSns();
         console.log('event received is', event);
         const orderDetails = JSON.parse(event.body);
         console.log('order details are', orderDetails);
+
         const orderId = await generateOrderId(orderDetails);
         orderDetails["id"] = orderId;
+
         await createNewOrder(orderDetails);
+
+        await pushToSns(orderDetails);
         return {
             'statusCode': 200,
             'body': JSON.stringify({
-                message: 'Test user set successfully',
+                message: 'Order details set successfully',
             })
         }
     } catch (err) {
@@ -57,12 +55,15 @@ exports.lambdaHandler = async (event, context) => {
     }
 };
 
-function pushToSns() {
+/**
+ * Pushes a notification in SNS
+ * @param {Object} orderDetails 
+ * @returns 
+ */
+function pushToSns(orderDetails) {
     return new Promise((resolve, reject) => {
         const message = {
-            default: 'Hello from Lambda!',
-            email: 'Hello from Lambda via email!',
-            sms: 'Hello from Lambda via SMS!',
+            default: JSON.stringify(orderDetails)
         };
 
         const params = {
@@ -83,43 +84,21 @@ function pushToSns() {
     })
 }
 
-async function setRedisConnection() {
-    return new Promise(async (resolve, reject) => {
-        if (typeof redisClient === 'undefined') {
-            var redisClient = redis.createClient({
-                url: 'redis://clustercfg.serverless-order-pipeline-dev-memdb.2dxxgf.memorydb.ap-south-1.amazonaws.com:6379',
-                socket: {
-                    tls: true,
-                    rejectUnauthorized: false,
-                }
-            });
-            console.log('Trying connection');
-            redisClient.on('connect', function() {
-              console.log('Connected to MemoryDB');
-            });
-            
-            redisClient.on('error', function(err) {
-              console.error('Error connecting to MemoryDB:', err);
-              reject();
-            });
-            await redisClient.connect();
-            console.log('redis connected');
-            // await redisClient.set('testuser', 'suchitgupta');
-            // const value = await redisClient.get('testuser');
-            // console.log('user value', value);
-            resolve(redisClient);
-        }
-    });
-}
-
+/**
+ * Create entry of the order in MemoryDB
+ * @param {Object} orderDetails 
+ * @returns 
+ */
 async function createNewOrder(orderDetails) {
     return new Promise(async (resolve, reject) => {
         try {
-            console.log('initing setting', orderDetails['id'], JSON.stringify(orderDetails))
-            await redisClient.set(orderDetails['id'], JSON.stringify(orderDetails));
-            console.log('order details set scfly')
+            // Setting order id and order details as redis json value
+            await redisClient.call("JSON.SET", orderDetails['id'], '$', JSON.stringify(orderDetails));
+            
+            // Calculating score of the order entry
             const epochInSeconds = Math.floor(new Date(orderDetails['created_at']).getTime() / 1000);
-            console.log('setting user orders', orderDetails['customer_id'], epochInSeconds, orderDetails['id']);
+            
+            // Appending order id to the sorted set of order by customer id
             await redisClient.zadd(orderDetails['customer_id'], epochInSeconds, orderDetails['id']);
             console.log('user order details set successfully');
             resolve();
@@ -130,6 +109,11 @@ async function createNewOrder(orderDetails) {
     });
 }
 
+/**
+ * Generates a random order id appended with timestamp of creation
+ * @param {Object} orderDetails 
+ * @returns orderId
+ */
 async function generateOrderId(orderDetails) {
     return orderDetails['id'];
 }

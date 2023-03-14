@@ -1,10 +1,6 @@
-// const AWS = require('aws-sdk');
-// const sns = new AWS.SNS();
-const redis = require('redis');
 const Redis = require('ioredis');
 
-// const memoryDb = new AWS.MemoryDB();
-
+// Setting redis connection if a connection does not exist
 if (typeof redisClient === 'undefined') {
     console.log('Establishing redis connection', redisClient);
       var redisClient = new Redis({
@@ -29,14 +25,6 @@ if (typeof redisClient === 'undefined') {
 
 exports.lambdaHandler = async (event, context) => {
     try {
-        // Generate order id and put an entry into memoryDB
-
-        // Generate a sns message
-        // await pushToSns();
-        
-        // await pushToMemoryDB();
-        // const userValue = await setRedisConnection();
-        // redisClient.get('test')
         let requestType = undefined;
         let requestId = undefined;
         if(event.queryStringParameters.order_id) {
@@ -58,7 +46,7 @@ exports.lambdaHandler = async (event, context) => {
                 responseValue.push(orderLog);
             }
         }
-        console.log('event received is', event)
+        console.log('event received is', event);
         return {
             'statusCode': 200,
             'body': JSON.stringify(responseValue)
@@ -75,78 +63,6 @@ exports.lambdaHandler = async (event, context) => {
 };
 
 async function getOrderDetails(orderId) {
-    const orderDetails = await redisClient.get(orderId);
+    const orderDetails = await redisClient.call("JSON.GET", orderId, '.');
     return JSON.parse(orderDetails);
-}
-
-function pushToSns() {
-    return new Promise((resolve, reject) => {
-        const message = {
-            default: 'Hello from Lambda!',
-            email: 'Hello from Lambda via email!',
-            sms: 'Hello from Lambda via SMS!',
-        };
-
-        const params = {
-            Message: JSON.stringify(message),
-            MessageStructure: 'json',
-            TopicArn: process.env.SNS_TOPIC_ARN,
-        };
-
-        sns.publish(params, (err, data) => {
-            if (err) {
-                console.error(err);
-                reject(err)
-            } else {
-                console.log(`Message sent: ${data}`);
-                resolve(data)
-            }
-        });
-    })
-}
-async function pushToMemoryDB(orderDetails) {
-    // const params = {
-    //     ClusterName: process.env.MEMORYDB_ARN,
-    //     Command: 'SET',
-    //     Key: orderDetails['orderId'] + '-' + 'timestamp',
-    //     Value: orderDetails
-    //   };
-    
-    const params = {
-        ClusterName: "arn:aws:memorydb:ap-south-1:613231527352:cluster/serverless-order-pipeline-dev-memdb",
-        Command: 'SET',
-        Key: 'name',
-        Value: 'suchit gupta'
-      };
-
-      const result = await memoryDb.sendCommand(params).promise();
-      console.log('name is set to memdb');
-      return result;
-}
-
-async function setRedisConnection() {
-    return new Promise(async (resolve, reject) => {
-        if (typeof redisClient === 'undefined') {
-            var redisClient = redis.createClient({
-                url: 'redis://clustercfg.serverless-order-pipeline-dev-memdb.2dxxgf.memorydb.ap-south-1.amazonaws.com:6379',
-                socket: {
-                    tls: true,
-                    rejectUnauthorized: false,
-                }
-            });
-            console.log('Trying connection');
-            redisClient.on('connect', function() {
-              console.log('Connected to MemoryDB');
-            });
-            
-            redisClient.on('error', function(err) {
-              console.error('Error connecting to MemoryDB:', err);
-              reject();
-            });
-            await redisClient.connect();
-            console.log('redis connected');
-            const userValue = await redisClient.get('12345');
-            resolve(userValue);
-        }
-    })
 }
