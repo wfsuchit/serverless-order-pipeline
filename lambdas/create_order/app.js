@@ -1,6 +1,7 @@
 const AWS = require('aws-sdk');
 const sns = new AWS.SNS();
 const Redis = require('ioredis');
+const { v4: uuidv4 } = require('uuid');
 
 // Creates a new redis connection only if connection does not exist
 if (typeof redisClient === 'undefined') {
@@ -9,7 +10,7 @@ if (typeof redisClient === 'undefined') {
               port: 6379,
               host: "clustercfg.serverless-order-pipeline-dev-memdb.2dxxgf.memorydb.ap-south-1.amazonaws.com",
               tls: {},
-      });;
+      });
     console.log('connected to redis');
 }
 
@@ -41,9 +42,10 @@ exports.lambdaHandler = async (event, context) => {
         return {
             'statusCode': 200,
             'body': JSON.stringify({
-                message: 'Order details set successfully',
+                message: 'Order created successfully',
+                orderId
             })
-        }
+        };
     } catch (err) {
         console.log(err);
         return {
@@ -75,13 +77,13 @@ function pushToSns(orderDetails) {
         sns.publish(params, (err, data) => {
             if (err) {
                 console.error(err);
-                reject(err)
+                reject(err);
             } else {
                 console.log(`Message sent: ${data}`);
-                resolve(data)
+                resolve(data);
             }
         });
-    })
+    });
 }
 
 /**
@@ -115,5 +117,9 @@ async function createNewOrder(orderDetails) {
  * @returns orderId
  */
 async function generateOrderId(orderDetails) {
-    return orderDetails['id'];
+    let uuid = uuidv4();
+    uuid = uuid.toString().replace(/-/g,'');
+    const epochTime = Math.ceil(new Date().getTime() / 1000);
+    console.log('order id is ', uuid.toString() + '-' + epochTime.toString());
+    return uuid.toString() + '-' + epochTime.toString();
 }

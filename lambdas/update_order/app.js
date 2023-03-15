@@ -1,6 +1,5 @@
 const AWS = require('aws-sdk');
 const sns = new AWS.SNS();
-const redis = require('redis');
 
 const memoryDb = new AWS.MemoryDB();
 
@@ -24,13 +23,13 @@ exports.lambdaHandler = async (event, context) => {
         // await pushToSns();
         
         // await pushToMemoryDB();
-        await setRedisConnection();
+        // await setRedisConnection();
         // redisClient.get('test')
         console.log('event received is', event)
         return {
             'statusCode': 200,
             'body': JSON.stringify({
-                message: event,
+                message: 'Update order request is currently under developement. Your request was successfully received by the lambdaHandler',
             })
         }
     } catch (err) {

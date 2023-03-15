@@ -17,10 +17,10 @@ Parameters:
 
 Resources:
 
-  RootApiGateway:
-    Type: AWS::Serverless::Api
-    Properties:
-      StageName: Prod
+  # RootApiGateway:
+  #   Type: AWS::Serverless::Api
+  #   Properties:
+  #     StageName: Prod
 
   CreateOrderLambda:
     Type: 'AWS::Serverless::Function'
@@ -30,13 +30,13 @@ Resources:
       Runtime: nodejs18.x
       FunctionName: !Join ["-", [!Ref "ModuleName", "create-order"]]
       Description: "Lambda to create a new order"
-      Events:
-        HttpPost:
-          Type: 'Api'
-          Properties:
-            RestApiId: !Ref RootApiGateway
-            Path: /createOrder
-            Method: post
+      # Events:
+      #   HttpPost:
+      #     Type: 'Api'
+      #     Properties:
+      #       RestApiId: !Ref RootApiGateway
+      #       Path: /order/createOrder
+      #       Method: post
       Role: !GetAtt EntryLambdaRole.Arn
       Environment:
         Variables:
@@ -57,13 +57,13 @@ Resources:
       Runtime: nodejs18.x
       FunctionName: !Join ["-", [!Ref "ModuleName", "update-order"]]
       Description: "Lambda to update a existing order"
-      Events:
-        HttpPost:
-          Type: 'Api'
-          Properties:
-            RestApiId: !Ref RootApiGateway
-            Path: /updateOrder
-            Method: post
+      # Events:
+      #   HttpPost:
+      #     Type: 'Api'
+      #     Properties:
+      #       RestApiId: !Ref RootApiGateway
+      #       Path: /order/updateOrder
+      #       Method: post
       Role: !GetAtt EntryLambdaRole.Arn
       Environment:
         Variables:
@@ -84,13 +84,40 @@ Resources:
       Runtime: nodejs18.x
       FunctionName: !Join ["-", [!Ref "ModuleName", "fetch-order"]]
       Description: "Lambda to fetch a existing order"
-      Events:
-        HttpPost:
-          Type: 'Api'
-          Properties:
-            RestApiId: !Ref RootApiGateway
-            Path: /fetchOrder
-            Method: post
+      # Events:
+      #   HttpPost:
+      #     Type: 'Api'
+      #     Properties:
+      #       RestApiId: !Ref RootApiGateway
+      #       Path: /order/fetchOrder
+      #       Method: post
+      Role: !GetAtt EntryLambdaRole.Arn
+      Environment:
+        Variables:
+          SNS_TOPIC_ARN: !Ref SnsTopic
+          # MEMORYDB_ARN: !Ref MemoryDBCluster
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0786bd95583dca17e
+        SubnetIds:
+          - subnet-0bb2f9ecd49dc8206
+          - subnet-000f285aab8352835
+
+  EnrichOrderLambda:
+    Type: 'AWS::Serverless::Function'
+    Properties:
+      CodeUri: lambdas/enrich_order
+      Handler: app.lambdaHandler
+      Runtime: nodejs18.x
+      FunctionName: !Join ["-", [!Ref "ModuleName", "enrich-order"]]
+      Description: "Lambda to enrich an order"
+      # Events:
+      #   HttpPost:
+      #     Type: 'Api'
+      #     Properties:
+      #       RestApiId: !Ref RootApiGateway
+      #       Path: /order/enrichOrder
+      #       Method: post
       Role: !GetAtt EntryLambdaRole.Arn
       Environment:
         Variables:
@@ -167,7 +194,7 @@ Resources:
       # TopicName: !Join ["-", [!Ref "ModuleName", "sns"]]
       # FifoTopic: false
       Subscription:
-        - Endpoint: !GetAtt EnrichmentQueue.Arn
+        - Endpoint: !GetAtt ElasticQueue.Arn
           Protocol: "sqs"
       #   - Endpoint: !GetAtt QueueTwo.Arn
       #     Protocol: "sqs"
@@ -177,7 +204,7 @@ Resources:
         - Key: module
           Value: !Ref "ModuleName"
 
-  EnrichmentQueue:
+  ElasticQueue:
     Type: AWS::SQS::Queue
     Properties:
       DelaySeconds: 0
@@ -212,7 +239,7 @@ Resources:
                   - sqs:GetQueueAttributes
                   - sqs:ChangeMessageVisibility
                 Resource: 
-                  - !GetAtt EnrichmentQueue.Arn
+                  - !GetAtt ElasticQueue.Arn
                   # - !GetAtt HealthtechQueueTwo.Arn
         - PolicyName: LambdaCloudWatchLogs
           PolicyDocument:
@@ -247,19 +274,19 @@ Resources:
                   - memorydb:DeleteItem
                 Resource: arn:aws:memorydb:ap-south-1:613231527352:cluster/serverless-order-pipeline-dev-memdb
 
-  EnrichmentLambda:
+  ElasticDumpLambda:
     Type: 'AWS::Serverless::Function'
     Properties:
-      CodeUri: lambdas/enrich_order
+      CodeUri: lambdas/elastic_dump
       Handler: app.lambdaHandler
       Runtime: nodejs18.x
-      FunctionName: !Join ["-", [!Ref "ModuleName", "enrich-order"]]
-      Description: "serverless-order-pipeline SQS One triggered lambda to enrich order"
+      FunctionName: !Join ["-", [!Ref "ModuleName", "elastic-dump"]]
+      Description: "serverless-order-pipeline SQS One triggered lambda to dump order details to elastic"
       Events:
         SqsEvent:
           Type: 'SQS'
           Properties:
-            Queue: !GetAtt EnrichmentQueue.Arn
+            Queue: !GetAtt ElasticQueue.Arn
             BatchSize: 1
       Role: !GetAtt LambdaSqsRole.Arn
       Environment:
@@ -287,12 +314,12 @@ Resources:
               ArnEquals:
                 aws:SourceArn: !Ref SnsTopic
       Queues:
-        - !Ref EnrichmentQueue
+        - !Ref ElasticQueue
         # - !Ref HealthtechQueueTwo
 
-Outputs:
-  WebEndpoint:
-    Description: API Gateway endpoint URL for Prod stage
-    Value: !Sub "https://${RootApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
-    Export:
-      Name: MyApiEndpoint
+# Outputs:
+#   WebEndpoint:
+#     Description: API Gateway endpoint URL for Prod stage
+#     Value: !Sub "https://${RootApiGateway}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+#     Export:
+#       Name: MyApiEndpoint

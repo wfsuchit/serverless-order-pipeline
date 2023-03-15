@@ -27,16 +27,13 @@ if (typeof redisClient === 'undefined') {
 exports.lambdaHandler = async (event, context) => {
     try {
         console.log('event received is', event);
-        for await(const record of event['Records']) {
-            const recordBody = JSON.parse(record['body']);
-            const orderDetails = JSON.parse(recordBody['Message']);
-            await enrichOrder(orderDetails);
-            console.log(`enrichment for orderid ${orderDetails['id']} complete`);
-        }
+        const orderId = event.queryStringParameters.order_id;
+        await enrichOrder(orderId);
+        console.log(`enrichment for orderid ${orderId} complete`);
         return {
             'statusCode': 200,
             'body': JSON.stringify({
-                message: 'Enrichment Complete',
+                message: 'Enrichment lambda is currently under development, Your request was successfully received and the status of order id is updated to enrichment_complete.',
             })
         };
     } catch (err) {
@@ -50,10 +47,9 @@ exports.lambdaHandler = async (event, context) => {
  * @param {Object} orderDetails 
  * @returns 
  */
-async function enrichOrder(orderDetails) {
+async function enrichOrder(orderId) {
     return new Promise(async (resolve, reject) => {
         try {
-            const orderId = orderDetails['id'];
             await redisClient.call("JSON.SET", orderId, "$.status", JSON.stringify("enrichment_complete"));
             resolve();
         } catch (err) {
